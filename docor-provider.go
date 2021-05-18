@@ -68,14 +68,19 @@ func convertDocor2PTService(msg *string) (service *ptransit.PTService, argJson s
 	// using docor info
 	payloads := strings.Split(*msg, ",")
 
-	log.Printf("Split into %d tokens", len(payloads))
+//	log.Printf("Split into %d tokens", len(payloads))
+//	log.Printf("Not Docor System! [%s] %d",payloads[0], len(payloads[0]))
+	log.Printf("%u", payloads)
 
-	if payloads[0] != "DR05" {
-		log.Printf("Not Docor System!")
-		return service, "err"
-	}else if len(payloads) > 14 {
+
+	if  len(payloads) > 14 {
 		// for new log
-		vid, _ := strconv.Atoi(payloads[1][4:]) // scrape from "KOTAXX"
+		var vid int
+		if strings.HasPrefix(payloads[1], "KOTA"){
+			vid, _ = strconv.Atoi(payloads[1][4:]) // scrape from "KOTAXX"
+		}else{
+			vid, _ = strconv.Atoi(payloads[1])
+		}
 		lat, err := strconv.ParseFloat(payloads[8], 64)
 		if err != nil {
 			log.Printf("Can't convert latitude from `%s` at %d", payloads[8], vid)
@@ -153,27 +158,29 @@ func handleMQMessage(sclient *sxutil.SXServiceClient, msg *string) {
 	}
 
 	pts, argJson := convertDocor2PTService(msg)
+	if argJson != "" {
 
-	out, err := proto.Marshal(pts)
-	if err == nil {
-		cont := pb.Content{Entity: out}
-		smo := sxutil.SupplyOpts{
-			Name:  "Docor",
-			Cdata: &cont,
-			JSON:  argJson,
-		}
-		_, nerr := sclient.NotifySupply(&smo)
-		if nerr != nil {
-			log.Println("Error on NotifySupply: ", nerr)
-
-			newClient := sxutil.GrpcConnectServer(sxServerAddress)
-			if newClient != nil {
-				log.Printf("Reconnect Server %s\n", sxServerAddress)
-				sclient.SXClient = newClient
+		out, err := proto.Marshal(pts)
+		if err == nil {
+			cont := pb.Content{Entity: out}
+			smo := sxutil.SupplyOpts{
+				Name:  "Docor",
+				Cdata: &cont,
+				JSON:  argJson,
 			}
+			_, nerr := sclient.NotifySupply(&smo)
+			if nerr != nil {
+				log.Println("Error on NotifySupply: ", nerr)
+
+				newClient := sxutil.GrpcConnectServer(sxServerAddress)
+				if newClient != nil {
+					log.Printf("Reconnect Server %s\n", sxServerAddress)
+					sclient.SXClient = newClient
+				}
+			}
+		} else {
+			log.Printf("Error on marshaling. %#v\ndata:[%s]", err, argJson)
 		}
-	} else {
-		log.Printf("Error on marshaling. %#v\ndata:[%s]", err, argJson)
 	}
 }
 
